@@ -33,7 +33,7 @@ This innovative tool transforms how you stay updated with arXiv papers by combin
 - One-click copy in Settings to export your keywords and authors configuration
 - Seamlessly combine exported preferences with SKILL for reproducible and shareable setups
 
-👉 **[Try it now!](https://arxiv.0-rangE.com/)** - No installation required
+👉 **[Try it now!](https://arxiv.0-range.cn/)** - No installation required
 
 
 
@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/b25712a4-fb8d-484f-863d-e8da6922f9d7
 # How to use
 This repo will daily crawl arXiv papers about **cs.CV, cs.GR, cs.CL, cs.AI, cs.CE, cs.GT, cs.IT, cs.LG**, and use **DeepSeek** to summarize the papers in **Chinese**.
 If you wish to crawl other arXiv categories, use other LLMs, or other languages, please follow the instructions.
-Otherwise, you can watch the video above first and directly use this repo in https://arxiv.0-rangE.com/. Please star it if you like :)
+Otherwise, you can watch the video above first and directly use this repo in https://arxiv.0-range.cn/. Please star it if you like :)
 
 <details>
    <summary> If you want to customize categories, LLMs, or languages, click here.  </summary>

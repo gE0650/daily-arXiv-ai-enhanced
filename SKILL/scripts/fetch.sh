@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 参数1: URL，参数2: 超时时间（毫秒），默认60000（1分钟）
-url=${1:-"https://arxiv.0-rangE.com/?category=cs.CV"}
+url=${1:-"https://arxiv.0-range.cn/?category=cs.CV"}
 timeout=${2:-60000}
 
 # 检测 node 是否安装
