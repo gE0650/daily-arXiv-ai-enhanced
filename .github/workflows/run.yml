@@ -20,6 +20,35 @@ jobs:
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
         uv sync
+
+    - name: Collect classic VLA papers
+      id: classics_step
+      run: |
+        source .venv/bin/activate
+        mkdir -p data
+
+        # 只生成一次: 文件已存在则跳过, 已读并删除的经典论文不会再次被抓取/推送
+        # Generate only once: skip if classic.jsonl already exists
+        if [ -f "data/classic.jsonl" ]; then
+          echo "ℹ️ 经典论文文件已存在，跳过生成 / classic.jsonl exists, skip generation"
+          echo "classics_generated=false" >> $GITHUB_OUTPUT
+        else
+          echo "📚 首次运行，开始抓取 VLA 经典论文 / First run, collecting classic VLA papers..."
+          cd ai
+          export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          export OPENAI_BASE_URL=${{ secrets.OPENAI_BASE_URL }}
+          export LANGUAGE="${{ vars.LANGUAGE }}"
+          export MODEL_NAME="${{ vars.MODEL_NAME }}"
+          python collect_classics.py --out ../data/classic.jsonl
+          cd ..
+          if [ -f "data/classic.jsonl" ]; then
+            echo "✅ 经典论文已生成 / Classic papers generated"
+            echo "classics_generated=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ 经典论文生成失败，本次不强制继续 / Failed to generate classic papers"
+            echo "classics_generated=false" >> $GITHUB_OUTPUT
+          fi
+        fi
         
     - name: Crawl arXiv papers
       id: crawl_step
@@ -96,6 +125,15 @@ jobs:
                 exit 1
                 ;;
         esac
+
+        # 经典论文覆盖: 本次生成了经典论文时, 即使今日无新论文也继续,
+        # 确保经典论文被推送到 data 分支
+        # Classic papers override: force continue when classics were generated
+        if [ "${{ steps.classics_step.outputs.classics_generated }}" = "true" ]; then
+          echo "📚 本次生成了经典论文，强制继续处理 / Classic papers generated, forcing workflow to continue"
+          echo "has_new_content=true" >> $GITHUB_OUTPUT
+          echo "skip_reason=classics_generated" >> $GITHUB_OUTPUT
+        fi
         
     - name: AI Enhancement Processing
       if: steps.dedup_check.outputs.has_new_content == 'true'

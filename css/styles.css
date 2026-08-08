@@ -2326,3 +2326,205 @@ footer {
   display: flex;
   align-items: center;
 }
+
+/* ===== VLA 经典论文区 (Classics) ===== */
+.classics-section {
+  margin-top: 28px;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: var(--gradient-light);
+  border: 1px solid var(--border-accent);
+}
+
+.classics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.classics-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.classics-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0;
+}
+
+.classics-badge {
+  background: var(--gradient-primary);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+}
+
+.classics-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.classics-status {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.classics-restore-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.classics-restore-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.classics-hint {
+  margin: 10px 0 18px;
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+
+.classics-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+.classic-card {
+  cursor: default;
+}
+
+.classic-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.classic-index {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.classic-year {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--keyword-gradient);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.classic-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--gold-dark);
+  background: rgba(255, 215, 0, 0.15);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+}
+
+.classic-card .paper-card-title {
+  padding: 12px 16px 0;
+}
+
+.classic-card .paper-card-title a {
+  color: var(--text-color);
+}
+
+.classic-card .paper-card-title a:hover {
+  color: var(--primary-color);
+}
+
+.classic-card .paper-card-authors {
+  padding: 8px 16px 0;
+}
+
+.classic-card .paper-card-summary {
+  padding: 10px 16px 0;
+}
+
+.classic-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  margin-top: auto;
+}
+
+.classic-done-btn {
+  background: var(--author-gradient);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.classic-done-btn:hover {
+  opacity: 0.9;
+}
+
+.classic-card-actions a.button {
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.classic-card-actions a.button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.classics-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 30px 0 6px;
+}
+
+.frontier-heading {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 18px 0 0;
+}
+
+@media (max-width: 768px) {
+  .classics-section {
+    padding: 16px;
+  }
+  .classics-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

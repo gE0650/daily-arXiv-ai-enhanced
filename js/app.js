@@ -19,6 +19,11 @@ let textSearchQuery = ''; // 实时文本搜索查询
 let previousActiveKeywords = null; // 文本搜索激活时，暂存之前的关键词激活集合
 let previousActiveAuthors = null; // 文本搜索激活时，暂存之前的作者激活集合
 
+// ===== VLA 经典论文 (Classics) =====
+const CLASSIC_SEEN_KEY = 'seenClassicPapers';
+let classicPapers = [];
+let seenClassicIds = new Set();
+
 // 加载用户的关键词设置
 function loadUserKeywords() {
   const savedKeywords = localStorage.getItem('preferredKeywords');
@@ -384,6 +389,10 @@ document.addEventListener('DOMContentLoaded', () => {
   urlAuthorParam = getUrlAuthor();
   urlKeywordsParam = getUrlKeywords();
 
+  // 加载经典论文区 (JSON API 模式下自动跳过)
+  loadClassicPapers();
+  document.getElementById('restoreClassicsBtn')?.addEventListener('click', restoreClassicPapers);
+
   fetchAvailableDates().then(() => {
     if (availableDates.length > 0) {
       loadPapersByDate(availableDates[0]);
@@ -393,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchGitHubStats() {
   try {
-    const response = await fetch('https://api.github.com/repos/dw-dengwei/daily-arXiv-ai-enhanced');
+    const response = await fetch(`https://api.github.com/repos/${DATA_CONFIG.repoOwner}/${DATA_CONFIG.repoName}`);
     const data = await response.json();
     const starCount = data.stargazers_count;
     const forkCount = data.forks_count;
@@ -1092,6 +1101,154 @@ function formatAuthorsForCard(authorsString, authorTerms = []) {
   });
   
   return result.join(', ');
+}
+
+// ===== VLA 经典论文 (Classics) =====
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getSeenClassicIds() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(CLASSIC_SEEN_KEY) || '[]'));
+  } catch (e) {
+    return new Set();
+  }
+}
+
+async function loadClassicPapers() {
+  // JSON API 模式下不渲染经典论文区
+  if (isJsonMode()) return;
+
+  const section = document.getElementById('classicsSection');
+  const container = document.getElementById('classicsContainer');
+  if (!section || !container) return;
+
+  try {
+    const response = await fetch(DATA_CONFIG.getDataUrl('data/classic.jsonl'));
+    if (!response.ok) {
+      section.style.display = 'none';
+      return;
+    }
+    const text = await response.text();
+    if (!text || !text.trim()) {
+      section.style.display = 'none';
+      return;
+    }
+    classicPapers = parseClassicJsonl(text);
+    if (classicPapers.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    renderClassicPapers();
+    section.style.display = '';
+  } catch (error) {
+    console.error('加载经典论文失败:', error);
+    section.style.display = 'none';
+  }
+}
+
+function parseClassicJsonl(jsonlText) {
+  const papers = [];
+  jsonlText.trim().split('\n').forEach(line => {
+    try {
+      const p = JSON.parse(line);
+      if (!p || !p.id) return;
+      papers.push({
+        id: p.id,
+        title: p.title || '',
+        url: p.abs || `https://arxiv.org/abs/${p.id}`,
+        authors: Array.isArray(p.authors) ? p.authors.join(', ') : (p.authors || ''),
+        category: Array.isArray(p.categories) ? p.categories : (p.categories ? [p.categories] : []),
+        year: (p.date || '').slice(0, 4) || '',
+        summary: (p.AI && p.AI.tldr) || p.summary || '',
+        details: p.summary || '',
+        motivation: (p.AI && p.AI.motivation) || '',
+        method: (p.AI && p.AI.method) || '',
+        result: (p.AI && p.AI.result) || '',
+        conclusion: (p.AI && p.AI.conclusion) || ''
+      });
+    } catch (e) {
+      console.error('解析经典论文行失败:', e, line);
+    }
+  });
+  return papers;
+}
+
+function renderClassicPapers() {
+  const container = document.getElementById('classicsContainer');
+  const status = document.getElementById('classicsStatus');
+  const restoreBtn = document.getElementById('restoreClassicsBtn');
+  if (!container) return;
+
+  seenClassicIds = getSeenClassicIds();
+  const total = classicPapers.length;
+  const unread = classicPapers.filter(p => !seenClassicIds.has(p.id));
+  const readCount = total - unread.length;
+
+  if (status) status.textContent = `已读 ${readCount} / ${total}`;
+  if (restoreBtn) restoreBtn.style.display = readCount > 0 ? '' : 'none';
+
+  if (unread.length === 0) {
+    container.innerHTML = `
+      <div class="classics-empty">
+        <p>🎉 全部经典论文已读完！可以专注前沿论文了。</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = unread.map((p, index) => `
+    <article class="paper-card classic-card">
+      <div class="classic-card-top">
+        <span class="classic-index">#${index + 1}</span>
+        <span class="classic-year">${escapeHtml(p.year || '')}</span>
+        <span class="classic-tag">Classic</span>
+      </div>
+      <h3 class="paper-card-title">
+        <a href="${p.url}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a>
+      </h3>
+      <div class="paper-card-authors">${formatAuthorsForCard(p.authors)}</div>
+      <div class="paper-card-summary">${escapeHtml(p.summary)}</div>
+      <div class="classic-card-actions">
+        <button class="button classic-done-btn" data-id="${p.id}" title="标记为已读并从列表中删除">✓ 已读并删除</button>
+        <a class="button" href="${p.url}" target="_blank" rel="noopener">arXiv ↗</a>
+      </div>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('.classic-done-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      markClassicSeen(btn.dataset.id);
+    });
+  });
+}
+
+function markClassicSeen(id) {
+  seenClassicIds = getSeenClassicIds();
+  seenClassicIds.add(id);
+  try {
+    localStorage.setItem(CLASSIC_SEEN_KEY, JSON.stringify([...seenClassicIds]));
+  } catch (e) {
+    console.error('保存已读状态失败:', e);
+  }
+  renderClassicPapers();
+}
+
+function restoreClassicPapers() {
+  try {
+    localStorage.removeItem(CLASSIC_SEEN_KEY);
+  } catch (e) {
+    console.error('恢复经典论文失败:', e);
+  }
+  renderClassicPapers();
 }
 
 function renderPapers() {
