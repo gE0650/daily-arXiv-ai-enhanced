@@ -161,7 +161,7 @@ def process_all_items(data: List[Dict], model_name: str, language: str, max_work
     
     # 使用线程池并行处理
     processed_data = [None] * len(data)  # 预分配结果列表
-    processing_errors = []
+    errors_by_idx: Dict[int, str] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # 提交所有任务
         future_to_idx = {
@@ -181,9 +181,21 @@ def process_all_items(data: List[Dict], model_name: str, language: str, max_work
                 processed_data[idx] = result
             except Exception as e:
                 print(f"Item at index {idx} generated an exception: {e}", file=sys.stderr)
-                processing_errors.append(str(e))
+                errors_by_idx[idx] = str(e)
 
-    raise_if_processing_failed(processing_errors)
+    # 失败项串行重试一次：多数是限流或网关抖动之类的瞬时错误
+    if errors_by_idx:
+        print(f"Retrying {len(errors_by_idx)} failed paper(s)...", file=sys.stderr)
+        for idx in sorted(errors_by_idx):
+            try:
+                processed_data[idx] = process_single_item(chain, data[idx], language)
+                errors_by_idx.pop(idx)
+                print(f"Retry succeeded for {data[idx].get('id', idx)}", file=sys.stderr)
+            except Exception as e:
+                errors_by_idx[idx] = str(e)
+                print(f"Retry failed for {data[idx].get('id', idx)}: {e}", file=sys.stderr)
+
+    raise_if_processing_failed(list(errors_by_idx.values()), total=len(data))
     
     return processed_data
 

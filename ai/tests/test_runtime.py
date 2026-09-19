@@ -55,10 +55,19 @@ class BuildChatOpenAIKwargsTests(unittest.TestCase):
 
         self.assertNotIn("extra_body", kwargs)
 
-    def test_processing_error_is_reported_after_a_batch(self):
+    def test_widespread_failure_stops_the_batch(self):
         """Catches swallowing authentication failures and publishing fallback summaries."""
-        with self.assertRaisesRegex(RuntimeError, r"2 paper\(s\) failed"):
-            raise_if_processing_failed(["401 Unauthorized", "401 Unauthorized"])
+        with self.assertRaisesRegex(RuntimeError, r"513/513 paper\(s\) failed"):
+            raise_if_processing_failed(["401 Unauthorized"] * 513, total=513)
+
+    def test_isolated_failure_is_tolerated(self):
+        """Catches discarding a whole day of papers because one request failed."""
+        raise_if_processing_failed(["503 Service Unavailable"], total=513)
+
+    def test_failure_above_the_tolerance_still_stops_the_batch(self):
+        """Catches raising the tolerance so high that a broken provider slips through."""
+        with self.assertRaisesRegex(RuntimeError, r"40/513"):
+            raise_if_processing_failed(["500 Internal Server Error"] * 40, total=513)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,11 @@
 """Runtime configuration shared by the paper-enhancement job."""
 
+import sys
 from urllib.parse import urlparse
+
+# A dead key or a broken provider config fails every paper, which must stop the
+# workflow; an isolated gateway hiccup should not discard the whole batch.
+MAX_FAILURE_RATIO = 0.02
 
 # These providers enable thinking mode by default, and thinking mode rejects a
 # forced tool_choice (structured output then fails with a 400:
@@ -44,7 +49,29 @@ def build_chat_openai_kwargs(model_name: str, base_url: str, api_key: str) -> di
     return kwargs
 
 
-def raise_if_processing_failed(errors: list[str]) -> None:
-    """Make a failed AI batch fail the workflow instead of publishing placeholders."""
-    if errors:
-        raise RuntimeError(f"{len(errors)} paper(s) failed AI enhancement: {errors[0]}")
+def raise_if_processing_failed(
+    errors: list[str],
+    total: int,
+    max_failure_ratio: float = MAX_FAILURE_RATIO,
+) -> None:
+    """Stop the workflow when the AI batch degrades, tolerating isolated failures.
+
+    Publishing a batch of placeholder summaries silently is the failure mode this
+    guard exists for, so a widespread failure still aborts the run. A handful of
+    transient errors should not throw away the rest of the day's papers.
+    """
+    if not errors:
+        return
+
+    tolerated = int(total * max_failure_ratio)
+    if len(errors) > tolerated:
+        raise RuntimeError(
+            f"{len(errors)}/{total} paper(s) failed AI enhancement "
+            f"(tolerated {tolerated}): {errors[0]}"
+        )
+
+    print(
+        f"⚠️  {len(errors)}/{total} paper(s) failed AI enhancement and were "
+        f"skipped: {errors[0]}",
+        file=sys.stderr,
+    )
