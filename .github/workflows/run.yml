@@ -66,6 +66,24 @@ jobs:
             echo "📝 今日文件不存在，准备新建... / Today's file doesn't exist, ready to create new one..."
         fi
         
+        # 取回 data 分支上同一天的缓存：原始元数据 + 上一轮的 AI 结果
+        # Restore same-day caches (raw metadata + previous AI results) from the data branch
+        mkdir -p /tmp/arxiv-cache
+        git fetch origin data:refs/remotes/origin/data || true
+        if git show refs/remotes/origin/data:data/${today}.jsonl > /tmp/arxiv-cache/${today}.jsonl 2>/dev/null; then
+            echo "✅ 命中元数据缓存：$(wc -l < /tmp/arxiv-cache/${today}.jsonl) 条 / metadata cache hit"
+        else
+            rm -f /tmp/arxiv-cache/${today}.jsonl
+            echo "ℹ️ 无元数据缓存，将批量获取全部元数据 / No metadata cache for today"
+        fi
+        if git show refs/remotes/origin/data:data/${today}_AI_enhanced_${LANGUAGE}.jsonl > /tmp/arxiv-cache/${today}_AI.jsonl 2>/dev/null; then
+            echo "✅ 命中 AI 缓存：$(wc -l < /tmp/arxiv-cache/${today}_AI.jsonl) 条 / AI cache hit"
+        else
+            rm -f /tmp/arxiv-cache/${today}_AI.jsonl
+            echo "ℹ️ 无 AI 缓存，将全部重新生成 / No AI cache for today"
+        fi
+        export ARXIV_META_CACHE="/tmp/arxiv-cache/${today}.jsonl"
+        
         cd daily_arxiv
         export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
         export OPENAI_BASE_URL=${{ secrets.OPENAI_BASE_URL }}
@@ -148,7 +166,7 @@ jobs:
         export LANGUAGE="${{ vars.LANGUAGE }}"
         export MODEL_NAME="${{ vars.MODEL_NAME }}"
         
-        python enhance.py --data ../data/${today}.jsonl --max_workers 6
+        python enhance.py --data ../data/${today}.jsonl --max_workers 6 --cache /tmp/arxiv-cache/${today}_AI.jsonl
         
         # 检查AI处理是否成功 / Check if AI processing was successful
         if [ $? -ne 0 ]; then
@@ -318,7 +336,8 @@ jobs:
         done
 
     - name: Prepare data files for data branch
-      if: steps.dedup_check.outputs.has_new_content == 'true'
+      # always(): 运行失败时也要把已经处理完的部分结果推到 data 分支，下次重跑可直接复用
+      if: always() && steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         echo "准备数据文件... / Preparing data files..."
         today=${{ steps.crawl_step.outputs.crawl_date }}
@@ -334,7 +353,7 @@ jobs:
         echo "数据文件已保存到临时目录 / Data files saved to temporary directory"
 
     - name: Setup and commit to data branch
-      if: steps.dedup_check.outputs.has_new_content == 'true'
+      if: always() && steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         git config --global user.email "${{ vars.EMAIL }}"
         git config --global user.name "${{ vars.NAME }}"
@@ -388,7 +407,7 @@ jobs:
         fi
 
     - name: Push data changes to data branch
-      if: steps.dedup_check.outputs.has_new_content == 'true'
+      if: always() && steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         # 设置Git配置以处理自动合并 / Set Git config for automatic merging
         git config pull.rebase true

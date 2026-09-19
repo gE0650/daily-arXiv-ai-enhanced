@@ -63,14 +63,27 @@ echo "本地测试：爬取 $today 的arXiv论文... / Local test: Crawling $tod
 # 第一步：爬取数据 / Step 1: Crawl data
 echo "步骤1：开始爬取... / Step 1: Starting crawl..."
 
-# 检查今日文件是否已存在，如存在则删除 / Check if today's file exists, delete if found
+# 把今日已有的文件复制成缓存，再删掉重新抓取
+# Copy today's files into a cache before re-crawling, so a rerun can reuse them
+cache_dir="${TMPDIR:-/tmp}/arxiv-cache"
+mkdir -p "$cache_dir"
+
 if [ -f "data/${today}.jsonl" ]; then
+    cp "data/${today}.jsonl" "$cache_dir/${today}.jsonl"
+    echo "✅ 已缓存今日元数据：$cache_dir/${today}.jsonl / Cached today's metadata"
     echo "🗑️ 发现今日文件已存在，正在删除重新生成... / Found existing today's file, deleting for fresh start..."
     rm "data/${today}.jsonl"
     echo "✅ 已删除现有文件：data/${today}.jsonl / Deleted existing file: data/${today}.jsonl"
 else
     echo "📝 今日文件不存在，准备新建... / Today's file doesn't exist, ready to create new one..."
 fi
+
+if [ -f "data/${today}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl" ]; then
+    cp "data/${today}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl" "$cache_dir/${today}_AI.jsonl"
+    echo "✅ 已缓存今日 AI 结果：$cache_dir/${today}_AI.jsonl / Cached today's AI results"
+fi
+
+export ARXIV_META_CACHE="$cache_dir/${today}.jsonl"
 
 cd daily_arxiv
 scrapy crawl arxiv -o ../data/${today}.jsonl
@@ -109,7 +122,7 @@ cd ..
 if [ "$PARTIAL_MODE" = "false" ]; then
     echo "步骤3：AI增强处理... / Step 3: AI enhancement processing..."
     cd ai
-    python enhance.py --data ../data/${today}.jsonl --max_workers 6
+    python enhance.py --data ../data/${today}.jsonl --max_workers 6 --cache "$cache_dir/${today}_AI.jsonl"
     
     if [ $? -ne 0 ]; then
         echo "❌ AI处理失败 / AI processing failed"

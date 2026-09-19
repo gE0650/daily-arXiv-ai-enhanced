@@ -1,21 +1,44 @@
-import scrapy
 import os
 import re
 
+import scrapy
+
+from ..metadata import fetch_metadata, load_metadata_cache
+
 
 class ArxivSpider(scrapy.Spider):
+    name = "arxiv"  # 爬虫名称
+    allowed_domains = ["arxiv.org"]  # 允许爬取的域名
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        categories = os.environ.get("CATEGORIES", "cs.CV")
-        categories = categories.split(",")
-        # 保存目标分类列表，用于后续验证
-        self.target_categories = set(map(str.strip, categories))
+        categories = os.environ.get("CATEGORIES", "cs.CV").split(",")
+        # 去重是必须的：重复的分类页会被 Scrapy 的 dupefilter 丢掉，
+        # 那样 pending_pages 永远归不了零，整次抓取会一条数据都产不出来。
+        self.target_categories = list(
+            dict.fromkeys(cat.strip() for cat in categories if cat.strip())
+        )
         self.start_urls = [
             f"https://arxiv.org/list/{cat}/new" for cat in self.target_categories
         ]  # 起始URL（计算机科学领域的最新论文）
+        if not self.start_urls:
+            self.logger.warning(
+                "CATEGORIES is empty; nothing will be crawled. "
+                "Set the CATEGORIES repository variable, e.g. 'cs.CV,cs.CL'."
+            )
+        self.pending_pages = len(self.start_urls)
+        # 保留列表页出现顺序，同时去重
+        self.collected_ids: "dict[str, bool]" = {}
+        self.emitted = False
 
-    name = "arxiv"  # 爬虫名称
-    allowed_domains = ["arxiv.org"]  # 允许爬取的域名
+    def start_requests(self):
+        for url in self.start_urls:
+            yield scrapy.Request(url, callback=self.parse, errback=self.errback)
+
+    def errback(self, failure):
+        """A failed listing page must still let the batch run."""
+        self.logger.error(f"Listing page failed: {failure.value}")
+        yield from self.finish_page()
 
     def parse(self, response):
         # 提取每篇论文的信息
@@ -61,17 +84,52 @@ class ArxivSpider(scrapy.Spider):
                 # 检查论文分类是否与目标分类有交集
                 paper_categories = set(categories_in_paper)
                 if paper_categories.intersection(self.target_categories):
-                    yield {
-                        "id": arxiv_id,
-                        "categories": list(paper_categories),  # 添加分类信息用于调试
-                    }
+                    self.collected_ids.setdefault(arxiv_id, True)
                     self.logger.info(f"Found paper {arxiv_id} with categories {paper_categories}")
                 else:
                     self.logger.debug(f"Skipped paper {arxiv_id} with categories {paper_categories} (not in target {self.target_categories})")
             else:
                 # 如果无法获取分类信息，记录警告但仍然返回论文（保持向后兼容）
                 self.logger.warning(f"Could not extract categories for paper {arxiv_id}, including anyway")
-                yield {
-                    "id": arxiv_id,
-                    "categories": [],
-                }
+                self.collected_ids.setdefault(arxiv_id, True)
+
+        yield from self.finish_page()
+
+    def finish_page(self):
+        """Emit every collected paper once the last listing page is done.
+
+        Metadata is fetched in batches here instead of one request per paper:
+        the arXiv client sleeps 3s between requests, so a per-paper lookup for
+        ~500 papers costs ~25 minutes.
+        """
+        self.pending_pages -= 1
+        if self.pending_pages > 0 or self.emitted:
+            return
+        self.emitted = True
+
+        identifiers = list(self.collected_ids)
+        if not identifiers:
+            self.logger.warning("No papers collected from the listing pages")
+            return
+
+        cache = load_metadata_cache(os.environ.get("ARXIV_META_CACHE"))
+        metadata, missing = fetch_metadata(identifiers, cache=cache)
+        cached_hits = sum(1 for identifier in identifiers if identifier in cache)
+
+        self.logger.info(
+            f"Collected {len(identifiers)} papers: {len(metadata)} with metadata "
+            f"({cached_hits} from cache, {len(missing)} unresolved)"
+        )
+        if missing:
+            self.logger.warning(f"arXiv returned no metadata for: {', '.join(missing[:10])}")
+
+        for identifier in identifiers:
+            entry = metadata.get(identifier)
+            if not entry:
+                continue
+            yield {
+                "id": identifier,
+                "pdf": f"https://arxiv.org/pdf/{identifier}",
+                "abs": f"https://arxiv.org/abs/{identifier}",
+                **entry,
+            }

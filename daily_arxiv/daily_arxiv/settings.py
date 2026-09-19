@@ -63,11 +63,10 @@ ROBOTSTXT_OBEY = True
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 # 配置数据处理管道 / Configure item processing pipelines
-# 数字越小优先级越高 / Lower numbers have higher priority
-ITEM_PIPELINES = {
-    # 主要数据保存管道 / Main data saving pipeline
-    "daily_arxiv.pipelines.DailyArxivPipeline": 300,
-}
+# 元数据现在由爬虫批量获取（见 daily_arxiv/metadata.py），不再需要管道逐篇调用 arXiv API。
+# Metadata is now fetched in batches by the spider (see daily_arxiv/metadata.py),
+# so no pipeline performs a per-paper arXiv API call any more.
+ITEM_PIPELINES = {}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
