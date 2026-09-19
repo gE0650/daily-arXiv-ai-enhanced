@@ -109,7 +109,7 @@ cd ..
 if [ "$PARTIAL_MODE" = "false" ]; then
     echo "步骤3：AI增强处理... / Step 3: AI enhancement processing..."
     cd ai
-    python enhance.py --data ../data/${today}.jsonl
+    python enhance.py --data ../data/${today}.jsonl --max_workers 6
     
     if [ $? -ne 0 ]; then
         echo "❌ AI处理失败 / AI processing failed"
