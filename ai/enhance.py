@@ -127,7 +127,9 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
         print(f"Using partial AI data for {item.get('id', 'unknown')}: {list(partial_data.keys())}", file=sys.stderr)
     except Exception as e:
         print(f"Unexpected error for {item.get('id', 'unknown')}: {e}", file=sys.stderr)
-        raise RuntimeError(f"AI request failed for {item.get('id', 'unknown')}") from e
+        raise RuntimeError(
+            f"AI request failed for {item.get('id', 'unknown')}: {e}"
+        ) from e
     
     # Final validation to ensure all required fields exist
     for field in default_ai_fields.keys():

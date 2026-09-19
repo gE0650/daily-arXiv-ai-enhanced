@@ -64,6 +64,21 @@ class BuildChatOpenAIKwargsTests(unittest.TestCase):
         """Catches discarding a whole day of papers because one request failed."""
         raise_if_processing_failed(["503 Service Unavailable"], total=513)
 
+    def test_tolerated_failure_is_logged_with_details(self):
+        """Catches a tolerated failure disappearing without saying which paper broke."""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            raise_if_processing_failed(
+                ["AI request failed for 2609.00001: Error code: 503"],
+                total=513,
+            )
+
+        self.assertIn("2609.00001", buffer.getvalue())
+        self.assertIn("503", buffer.getvalue())
+
     def test_failure_above_the_tolerance_still_stops_the_batch(self):
         """Catches raising the tolerance so high that a broken provider slips through."""
         with self.assertRaisesRegex(RuntimeError, r"40/513"):

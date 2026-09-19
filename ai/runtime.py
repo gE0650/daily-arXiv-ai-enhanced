@@ -65,13 +65,15 @@ def raise_if_processing_failed(
 
     tolerated = int(total * max_failure_ratio)
     if len(errors) > tolerated:
+        detail = "\n  ".join(errors[:10])
         raise RuntimeError(
             f"{len(errors)}/{total} paper(s) failed AI enhancement "
-            f"(tolerated {tolerated}): {errors[0]}"
+            f"(tolerated {tolerated}):\n  {detail}"
         )
 
+    detail = "\n  ".join(errors[:20])
     print(
         f"⚠️  {len(errors)}/{total} paper(s) failed AI enhancement and were "
-        f"skipped: {errors[0]}",
+        f"skipped:\n  {detail}",
         file=sys.stderr,
     )
