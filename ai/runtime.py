@@ -2,6 +2,18 @@
 
 from urllib.parse import urlparse
 
+# These providers enable thinking mode by default, and thinking mode rejects a
+# forced tool_choice (structured output then fails with a 400:
+# "Thinking mode does not support this tool_choice").
+THINKING_DISABLED_HOSTS = ("volces.com", "deepseek.com")
+
+
+def _disables_thinking(hostname: str) -> bool:
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in THINKING_DISABLED_HOSTS
+    )
+
 
 def build_chat_openai_kwargs(model_name: str, base_url: str, api_key: str) -> dict:
     """Build provider-safe ChatOpenAI settings from workflow configuration."""
@@ -27,7 +39,7 @@ def build_chat_openai_kwargs(model_name: str, base_url: str, api_key: str) -> di
         "api_key": api_key,
     }
     hostname = urlparse(base_url).hostname or ""
-    if hostname.endswith("volces.com"):
+    if _disables_thinking(hostname):
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     return kwargs
 
