@@ -2408,7 +2408,7 @@ footer {
 }
 
 .classic-card {
-  cursor: default;
+  cursor: pointer;
 }
 
 .classic-card-top {
@@ -2517,6 +2517,105 @@ footer {
   font-weight: 700;
   color: var(--text-color);
   margin: 18px 0 0;
+}
+
+/* ===== 工业界 · 论文与动态 ===== */
+.industry-section {
+  margin-top: 28px;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: var(--gradient-light);
+  border: 1px solid var(--border-accent);
+}
+
+.industry-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 4px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.industry-group-title:first-child {
+  margin-top: 12px;
+}
+
+.industry-group-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.industry-group-hint {
+  margin: 0 0 14px;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.industry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+.industry-card-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.industry-source {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gradient-primary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+
+.industry-kind {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.industry-date {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.industry-card .paper-card-title {
+  padding: 10px 16px 0;
+}
+
+.industry-card .paper-card-authors {
+  padding: 6px 16px 0;
+}
+
+.industry-card .paper-card-summary {
+  padding: 8px 16px 0;
+}
+
+.industry-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px 16px;
+  margin-top: auto;
 }
 
 @media (max-width: 768px) {

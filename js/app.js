@@ -393,6 +393,9 @@ document.addEventListener('DOMContentLoaded', () => {
   loadClassicPapers();
   document.getElementById('restoreClassicsBtn')?.addEventListener('click', restoreClassicPapers);
 
+  // 加载工业界论文与动态 (JSON API 模式下自动跳过)
+  loadIndustryItems();
+
   fetchAvailableDates().then(() => {
     if (availableDates.length > 0) {
       loadPapersByDate(availableDates[0]);
@@ -1114,6 +1117,29 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+// AI 兜底文案：历史数据（含经典论文）里可能整段是占位符，展示时按"没有内容"处理
+const AI_PLACEHOLDER_TEXTS = [
+  'Summary generation failed',
+  'Motivation analysis unavailable',
+  'Method extraction failed',
+  'Result analysis unavailable',
+  'Conclusion extraction failed',
+  'Processing failed'
+];
+
+function aiText(value) {
+  if (!value) return '';
+  const text = String(value).trim();
+  if (!text || AI_PLACEHOLDER_TEXTS.includes(text)) return '';
+  if (/has not passed the compliance test|未通过合规检测/i.test(text)) return '';
+  return text;
+}
+
+function truncateText(text, maxLength = 200) {
+  const value = String(text || '').trim();
+  return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
+}
+
 function getSeenClassicIds() {
   try {
     return new Set(JSON.parse(localStorage.getItem(CLASSIC_SEEN_KEY) || '[]'));
@@ -1160,19 +1186,25 @@ function parseClassicJsonl(jsonlText) {
     try {
       const p = JSON.parse(line);
       if (!p || !p.id) return;
+      const ai = p.AI || {};
+      const categories = Array.isArray(p.categories) ? p.categories : (p.categories ? [p.categories] : []);
+      const tldr = aiText(ai.tldr);
       papers.push({
         id: p.id,
         title: p.title || '',
         url: p.abs || `https://arxiv.org/abs/${p.id}`,
         authors: Array.isArray(p.authors) ? p.authors.join(', ') : (p.authors || ''),
-        category: Array.isArray(p.categories) ? p.categories : (p.categories ? [p.categories] : []),
+        category: categories,
+        allCategories: categories,
+        date: p.date || '',
         year: (p.date || '').slice(0, 4) || '',
-        summary: (p.AI && p.AI.tldr) || p.summary || '',
+        summary: tldr,
+        cardSummary: tldr || truncateText(p.summary),
         details: p.summary || '',
-        motivation: (p.AI && p.AI.motivation) || '',
-        method: (p.AI && p.AI.method) || '',
-        result: (p.AI && p.AI.result) || '',
-        conclusion: (p.AI && p.AI.conclusion) || ''
+        motivation: aiText(ai.motivation),
+        method: aiText(ai.method),
+        result: aiText(ai.result),
+        conclusion: aiText(ai.conclusion)
       });
     } catch (e) {
       console.error('解析经典论文行失败:', e, line);
@@ -1205,29 +1237,49 @@ function renderClassicPapers() {
   }
 
   container.innerHTML = unread.map((p, index) => `
-    <article class="paper-card classic-card">
+    <article class="paper-card classic-card" data-index="${index}" role="button" tabindex="0">
       <div class="classic-card-top">
         <span class="classic-index">#${index + 1}</span>
         <span class="classic-year">${escapeHtml(p.year || '')}</span>
         <span class="classic-tag">Classic</span>
       </div>
-      <h3 class="paper-card-title">
-        <a href="${p.url}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a>
-      </h3>
+      <h3 class="paper-card-title">${escapeHtml(p.title)}</h3>
       <div class="paper-card-authors">${formatAuthorsForCard(p.authors)}</div>
-      <div class="paper-card-summary">${escapeHtml(p.summary)}</div>
+      ${p.cardSummary ? `<div class="paper-card-summary">${escapeHtml(p.cardSummary)}</div>` : ''}
       <div class="classic-card-actions">
         <button class="button classic-done-btn" data-id="${p.id}" title="标记为已读并从列表中删除">✓ 已读并删除</button>
         <a class="button" href="${p.url}" target="_blank" rel="noopener">arXiv ↗</a>
+        <span class="paper-card-link" style="margin-left: auto;">Details</span>
       </div>
     </article>
   `).join('');
+
+  // 点击卡片打开与前沿论文一致的详情弹窗，←/→ 在经典论文之间导航
+  container.querySelectorAll('.classic-card').forEach(card => {
+    const openDetails = () => {
+      const index = Number(card.dataset.index);
+      currentFilteredPapers = unread;
+      currentPaperIndex = index;
+      showPaperDetails(unread[index], index + 1);
+    };
+    card.addEventListener('click', openDetails);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        openDetails();
+      }
+    });
+  });
 
   container.querySelectorAll('.classic-done-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       markClassicSeen(btn.dataset.id);
     });
+  });
+
+  container.querySelectorAll('.classic-card-actions a.button').forEach(link => {
+    link.addEventListener('click', (e) => e.stopPropagation());
   });
 }
 
@@ -1249,6 +1301,130 @@ function restoreClassicPapers() {
     console.error('恢复经典论文失败:', e);
   }
   renderClassicPapers();
+}
+
+// ===== 工业界论文与动态 (Industry) =====
+let industryItems = [];
+
+async function loadIndustryItems() {
+  // JSON API 模式下不渲染工业界板块
+  if (isJsonMode()) return;
+
+  const section = document.getElementById('industrySection');
+  const container = document.getElementById('industryContainer');
+  if (!section || !container) return;
+
+  try {
+    const response = await fetch(DATA_CONFIG.getDataUrl('data/industry.jsonl'));
+    if (!response.ok) {
+      section.style.display = 'none';
+      return;
+    }
+    const text = await response.text();
+    if (!text || !text.trim()) {
+      section.style.display = 'none';
+      return;
+    }
+    industryItems = parseIndustryJsonl(text);
+    if (industryItems.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    renderIndustryItems();
+    section.style.display = '';
+  } catch (error) {
+    console.error('加载工业界内容失败:', error);
+    section.style.display = 'none';
+  }
+}
+
+function parseIndustryJsonl(jsonlText) {
+  const items = [];
+  jsonlText.trim().split('\n').forEach(line => {
+    try {
+      const p = JSON.parse(line);
+      if (!p || !p.id || !p.title) return;
+      const ai = p.AI || {};
+      const categories = Array.isArray(p.categories) ? p.categories : [];
+      const tldr = aiText(ai.tldr);
+      items.push({
+        id: p.id,
+        kind: p.kind === 'blog' ? 'blog' : 'paper',
+        source: p.source || 'Industry',
+        title: p.title,
+        url: p.abs || p.url || '',
+        authors: Array.isArray(p.authors) ? p.authors.join(', ') : (p.authors || ''),
+        category: categories,
+        allCategories: categories,
+        date: p.date || '',
+        summary: tldr,
+        cardSummary: tldr || truncateText(p.summary),
+        details: p.summary || '',
+        motivation: aiText(ai.motivation),
+        method: aiText(ai.method),
+        result: aiText(ai.result),
+        conclusion: aiText(ai.conclusion)
+      });
+    } catch (e) {
+      console.error('解析工业界条目失败:', e, line);
+    }
+  });
+  return items;
+}
+
+function renderIndustryItems() {
+  const container = document.getElementById('industryContainer');
+  const status = document.getElementById('industryStatus');
+  if (!container) return;
+
+  const papers = industryItems.filter(item => item.kind === 'paper');
+  const blogs = industryItems.filter(item => item.kind === 'blog');
+  const ordered = papers.concat(blogs);
+  if (status) status.textContent = `${papers.length} 篇论文 · ${blogs.length} 条动态`;
+
+  const indexById = new Map(ordered.map((item, index) => [item.id, index]));
+  const cardHtml = item => `
+    <article class="paper-card industry-card" data-index="${indexById.get(item.id)}" role="button" tabindex="0">
+      <div class="industry-card-top">
+        <span class="industry-source">${escapeHtml(item.source)}</span>
+        <span class="industry-kind">${item.kind === 'blog' ? '动态' : '论文'}</span>
+        ${item.date ? `<span class="industry-date">${formatDate(item.date)}</span>` : ''}
+      </div>
+      <h3 class="paper-card-title">${escapeHtml(item.title)}</h3>
+      ${item.authors ? `<div class="paper-card-authors">${formatAuthorsForCard(item.authors)}</div>` : ''}
+      ${item.cardSummary ? `<div class="paper-card-summary">${escapeHtml(item.cardSummary)}</div>` : ''}
+      <div class="industry-card-actions">
+        <span class="paper-card-link">Details</span>
+      </div>
+    </article>
+  `;
+
+  const groupHtml = (title, hint, list) => list.length === 0 ? '' : `
+    <h3 class="industry-group-title">${title}<span class="industry-group-count">${list.length}</span></h3>
+    ${hint ? `<p class="industry-group-hint">${hint}</p>` : ''}
+    <div class="industry-grid">${list.map(cardHtml).join('')}</div>
+  `;
+
+  container.innerHTML =
+    groupHtml('公司 &amp; 初创公司论文', '行业实验室与初创公司的代表性工作，按时间从新到旧。', papers) +
+    groupHtml('公司博客 &amp; 工程动态', '各家公司博客的最新文章。', blogs);
+
+  // 点击卡片打开与前沿论文一致的详情弹窗
+  container.querySelectorAll('.industry-card').forEach(card => {
+    const openDetails = () => {
+      const index = Number(card.dataset.index);
+      currentFilteredPapers = ordered;
+      currentPaperIndex = index;
+      showPaperDetails(ordered[index], index + 1);
+    };
+    card.addEventListener('click', openDetails);
+    card.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        openDetails();
+      }
+    });
+  });
 }
 
 function renderPapers() {
@@ -1578,6 +1754,7 @@ function renderPapers() {
     `;
     
     paperCard.addEventListener('click', () => {
+      currentFilteredPapers = [...filteredPapers]; // 恢复前沿论文的导航上下文（可能被经典论文弹窗改过）
       currentPaperIndex = index; // 记录当前点击的论文索引
       showPaperDetails(paper, index + 1);
     });
@@ -1611,9 +1788,12 @@ function showPaperDetails(paper, paperIndex) {
   
   const abstractText = paper.details || '';
   
-  const categoryDisplay = paper.allCategories ? 
+  // 工业界板块里有非 arXiv 条目（博客），这些要隐藏 PDF 预览与 arXiv 专属按钮
+  const isArxiv = /arxiv\.org\/abs\//.test(paper.url || '');
+  
+  const categoryDisplay = Array.isArray(paper.allCategories) ? 
     paper.allCategories.join(', ') : 
-    paper.category;
+    (paper.allCategories || paper.category || '');
   
   // 高亮作者（作者过滤 + 文本搜索）
   const modalAuthorTerms = [];
@@ -1659,12 +1839,13 @@ function showPaperDetails(paper, paperIndex) {
   const modalContent = `
     <div class="paper-details ${matchedPaperClass}">
       <p><strong>Authors: </strong>${highlightedAuthors}</p>
-      <p><strong>Categories: </strong>${categoryDisplay}</p>
-      <p><strong>Date: </strong>${formatDate(paper.date)}</p>
+      ${paper.source ? `<p><strong>Source: </strong>${escapeHtml(paper.source)}</p>` : ''}
+      ${categoryDisplay ? `<p><strong>Categories: </strong>${categoryDisplay}</p>` : ''}
+      ${paper.date ? `<p><strong>Date: </strong>${formatDate(paper.date)}</p>` : ''}
       
       
-      <h3>TL;DR</h3>
-      <p>${highlightedSummary}</p>
+      ${highlightedSummary ? `<h3>TL;DR</h3>
+      <p>${highlightedSummary}</p>` : ''}
       
       <div class="paper-sections">
         ${paper.motivation ? `<div class="paper-section"><h4>Motivation</h4><p>${highlightedMotivation}</p></div>` : ''}
@@ -1675,6 +1856,7 @@ function showPaperDetails(paper, paperIndex) {
       
       ${highlightedAbstract ? `<h3>Abstract</h3><p class="original-abstract">${highlightedAbstract}</p>` : ''}
       
+      ${isArxiv ? `
       <div class="pdf-preview-section">
         <div class="pdf-header">
           <h3>PDF Preview</h3>
@@ -1691,14 +1873,25 @@ function showPaperDetails(paper, paperIndex) {
           <iframe src="${paper.url.replace('abs', 'pdf')}" width="100%" height="800px" frameborder="0"></iframe>
         </div>
       </div>
+      ` : ''}
     </div>
   `;
   
   // Update modal content
   document.getElementById('modalBody').innerHTML = modalContent;
-  document.getElementById('paperLink').href = paper.url;
-  document.getElementById('pdfLink').href = paper.url.replace('abs', 'pdf');
-  document.getElementById('htmlLink').href = paper.url.replace('abs', 'html');
+  paperLink.href = paper.url;
+  paperLink.title = isArxiv ? 'Open in arXiv' : 'Open in source';
+  
+  if (isArxiv) {
+    pdfLink.style.display = '';
+    pdfLink.href = paper.url.replace('abs', 'pdf');
+    htmlLink.style.display = '';
+    htmlLink.href = paper.url.replace('abs', 'html');
+  } else {
+    // 博客等非 arXiv 条目没有 PDF/HTML 版本
+    pdfLink.style.display = 'none';
+    htmlLink.style.display = 'none';
+  }
   
   // --- GitHub Button Logic ---
   const githubLink = document.getElementById('githubLink');
@@ -1713,8 +1906,15 @@ function showPaperDetails(paper, paperIndex) {
   // ---------------------------
 
   // 提示词来自：https://papers.cool/
-  prompt = `请你阅读这篇文章${paper.url.replace('abs', 'pdf')},总结一下这篇文章解决的问题、相关工作、研究方法、做了什么实验及其结果、结论，最后整体总结一下这篇文章的内容`
-  document.getElementById('kimiChatLink').href = `https://www.kimi.com/_prefill_chat?prefill_prompt=${prompt}&system_prompt=你是一个学术助手，后面的对话将围绕着以下论文内容进行，已经通过链接给出了论文的PDF和论文已有的FAQ。用户将继续向你咨询论文的相关问题，请你作出专业的回答，不要出现第一人称，当涉及到分点回答时，鼓励你以markdown格式输出。&send_immediately=true&force_search=true`;
+  const kimiChatLink = document.getElementById('kimiChatLink');
+  if (isArxiv) {
+    prompt = `请你阅读这篇文章${paper.url.replace('abs', 'pdf')},总结一下这篇文章解决的问题、相关工作、研究方法、做了什么实验及其结果、结论，最后整体总结一下这篇文章的内容`
+    kimiChatLink.href = `https://www.kimi.com/_prefill_chat?prefill_prompt=${prompt}&system_prompt=你是一个学术助手，后面的对话将围绕着以下论文内容进行，已经通过链接给出了论文的PDF和论文已有的FAQ。用户将继续向你咨询论文的相关问题，请你作出专业的回答，不要出现第一人称，当涉及到分点回答时，鼓励你以markdown格式输出。&send_immediately=true&force_search=true`;
+    kimiChatLink.style.display = '';
+  } else {
+    // 博客没有 PDF，Kimi 预填链接不适用
+    kimiChatLink.style.display = 'none';
+  }
   
   // 更新论文位置信息
   const paperPosition = document.getElementById('paperPosition');

@@ -50,6 +50,32 @@ jobs:
           fi
         fi
         
+    - name: Collect industry papers and blogs
+      id: industry_step
+      # 单个博客源或 LLM 故障不应影响当天的论文流程
+      # One broken feed must not break the daily paper pipeline
+      continue-on-error: true
+      run: |
+        source .venv/bin/activate
+        mkdir -p data
+
+        echo "🏢 抓取工业界论文与公司博客 / Collecting industry papers and blogs..."
+        cd ai
+        export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        export OPENAI_BASE_URL=${{ secrets.OPENAI_BASE_URL }}
+        export LANGUAGE="${{ vars.LANGUAGE }}"
+        export MODEL_NAME="${{ vars.MODEL_NAME }}"
+        python collect_industry.py --out ../data/industry.jsonl --days 30 --max-per-source 3
+        cd ..
+
+        if [ -f "data/industry.jsonl" ]; then
+          echo "✅ 工业界内容已生成：$(wc -l < data/industry.jsonl) 条 / Industry section generated"
+          echo "industry_generated=true" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ 工业界内容未生成，该板块将隐藏 / Industry section unavailable"
+          echo "industry_generated=false" >> $GITHUB_OUTPUT
+        fi
+        
     - name: Crawl arXiv papers
       id: crawl_step
       run: |
